@@ -19,6 +19,7 @@ from handlers.json_handler import router as json_router
 from handlers.file_handler import router as file_router
 from handlers.tek_handler import router as tek_router
 from handlers.cancel_handler import router as cancel_router
+from handlers.email_handler import router as email_router
 
 
 
@@ -178,6 +179,7 @@ async def main():
     dp.include_router(json_router)
     dp.include_router(file_router)
     dp.include_router(tek_router)  # Diğer router'lardan sonra
+    dp.include_router(email_router) #kişiye mail
 
 
 
