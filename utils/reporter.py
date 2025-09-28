@@ -3,8 +3,9 @@ from typing import Dict, List
 from datetime import datetime
 from utils.group_manager import group_manager  # Bu satırı ekleyin
 
+
 def generate_processing_report(result: Dict) -> str:
-    """İşlem sonrası detaylı rapor oluşturur"""
+    """İşlem sonrası detaylı rapor oluşturur - TOPLU MAIL BİLGİSİ EKLENDİ"""
     if not result.get("success", False):
         error_msg = result.get("error", "Bilinmeyen hata")
         return f"❌ İşlem başarısız oldu:\n{error_msg}"
@@ -19,6 +20,10 @@ def generate_processing_report(result: Dict) -> str:
     successful_emails = sum(1 for res in email_results if res.get("success", False))
     failed_emails = len(email_results) - successful_emails
     
+    # YENİ: Toplu mail bilgisi
+    bulk_email_sent = result.get("bulk_email_sent", False)
+    bulk_email_recipient = result.get("bulk_email_recipient")
+    
     report_lines = [
         "✅ **DOSYA İŞLEME RAPORU**",
         f"⏰ İşlem zamanı: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
@@ -31,9 +36,18 @@ def generate_processing_report(result: Dict) -> str:
         f"• Oluşturulan dosya: {len(output_files)}",
         f"• Başarılı mail: {successful_emails}",
         f"• Başarısız mail: {failed_emails}",
+    ]
+    
+    # YENİ: Toplu mail durumu
+    if bulk_email_sent and bulk_email_recipient:
+        report_lines.append(f"• 📧 Otomatik toplu mail: {bulk_email_recipient} ✅")
+    else:
+        report_lines.append("• 📧 Otomatik toplu mail: Gönderilemedi ❌")
+    
+    report_lines.extend([
         "",
         "📁 **OLUŞTURULAN DOSYALAR:**"
-    ]
+    ])
     
     for group_id, file_info in output_files.items():
         filename = file_info.get("filename", "bilinmeyen")
@@ -49,7 +63,7 @@ def generate_processing_report(result: Dict) -> str:
             "⚠️ **EŞLEŞMEYEN ŞEHİRLER:**",
             f"Toplam {len(unmatched_cities)} farklı şehir:"
         ])
-        for city in unmatched_cities[:5]:  # İlk 5 şehir
+        for city in unmatched_cities[:5]:
             report_lines.append(f"• {city}")
         if len(unmatched_cities) > 5:
             report_lines.append(f"• ... ve {len(unmatched_cities) - 5} diğer şehir")
@@ -69,6 +83,7 @@ def generate_processing_report(result: Dict) -> str:
             report_lines.append(f"• ... ve {failed_emails - 3} diğer hata")
     
     return "\n".join(report_lines)
+
 
 def generate_email_report(email_results: List[Dict]) -> str:
     """Email gönderim raporu oluşturur"""

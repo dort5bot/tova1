@@ -1,7 +1,7 @@
 #Mail Gönderici (utils/mailer.py)
 # Mailer Kodunu Güncelleyin (Detaylı Loglama):
 """
-Gönderen adrese görünen isim eklendi: Excel Bot <user@domain.com>
+Gönderen adrese görünen isim eklendi: Data_listesi_Hıdır <user@domain.com>
 Mail header’larına X-Priority ve X-Mailer eklendi
 Hem plain text hem HTML body eklendi (modern e-posta uyumu için)
 Gmail spam'e düşürüyorsa, farklı bir SMTP servisi deneyin:
