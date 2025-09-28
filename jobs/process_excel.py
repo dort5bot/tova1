@@ -1,9 +1,11 @@
-# Excel İşleme Görevi (jobs/process_excel.py)
+# jobs/process_excel.py - GÜNCELLENMİŞ VERSİYON
+"""
 
+"""
 import asyncio
 from pathlib import Path
-from typing import Dict, Any, List
-from openpyxl import load_workbook
+from typing import Dict, Any
+import zipfile
 import tempfile
 
 from utils.excel_cleaner import clean_excel_headers
@@ -11,10 +13,10 @@ from utils.excel_splitter import split_excel_by_groups
 from utils.mailer import send_email_with_attachment
 from utils.group_manager import group_manager
 from utils.logger import logger
-import config  # config modülünü import etmeyi unutmayın
+from config import config
 
 async def process_excel_task(input_path: Path, user_id: int) -> Dict[str, Any]:
-    """Excel işleme görevini yürütür (geliştirilmiş)"""
+    """Excel işleme görevini yürütür - TOPLU MAIL OTOMATİK EKLENDİ"""
     cleaning_result = None
     try:
         logger.info(f"Excel işleme başlatıldı: {input_path.name}, Kullanıcı: {user_id}")
@@ -41,7 +43,7 @@ async def process_excel_task(input_path: Path, user_id: int) -> Dict[str, Any]:
         
         logger.info(f"Excel gruplara ayrıldı: {splitting_result['total_rows']} satır, {len(splitting_result['output_files'])} grup")
 
-        # 3. E-postaları gönder (async olarak)
+        # 3. E-postaları gönder (async olarak) - GRUP MAILLERİ
         email_tasks = []
         output_files = splitting_result["output_files"]
         email_results = []
@@ -55,7 +57,7 @@ async def process_excel_task(input_path: Path, user_id: int) -> Dict[str, Any]:
                 body = (
                     f"Merhaba,\n\n"
                     f"{group_info.get('group_name', group_id)} grubu için {file_info['row_count']} satırlık rapor ekte gönderilmiştir.\n\n"
-                    f"İyi çalışmalar,\nExcel Bot"
+                    f"İyi çalışmalar,\nData_listesi_Hıdır"
                 )
                 
                 # Her alıcı için ayrı mail gönderimi
@@ -70,7 +72,6 @@ async def process_excel_task(input_path: Path, user_id: int) -> Dict[str, Any]:
         if email_tasks:
             logger.info(f"{len(email_tasks)} mail görevi başlatılıyor...")
             
-            # Görevleri topla ve çalıştır
             tasks = [task[0] for task in email_tasks]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
@@ -94,12 +95,17 @@ async def process_excel_task(input_path: Path, user_id: int) -> Dict[str, Any]:
                         "group_id": group_id,
                         "recipient": recipient
                     })
-            
-            # Grup bazında email durumunu güncelle
-            successful_emails = sum(1 for res in email_results if res["success"])
-            logger.info(f"Mail gönderim sonucu: {successful_emails} başarılı, {len(email_results) - successful_emails} başarısız")
-        
-        # 4. Geçici dosyaları temizle
+
+        # 4. OTOMATİK TOPLU MAIL GÖNDERİMİ - YENİ EKLENDİ
+        toplu_mail_success = False
+        if config.PERSONAL_EMAIL:
+            toplu_mail_success = await send_automatic_bulk_email(input_path, output_files)
+            if toplu_mail_success:
+                logger.info(f"✅ Otomatik toplu mail gönderildi: {config.PERSONAL_EMAIL}")
+            else:
+                logger.error(f"❌ Otomatik toplu mail gönderilemedi: {config.PERSONAL_EMAIL}")
+
+        # 5. Geçici dosyaları temizle
         try:
             if cleaning_result and "temp_path" in cleaning_result:
                 temp_path = Path(cleaning_result["temp_path"])
@@ -115,6 +121,8 @@ async def process_excel_task(input_path: Path, user_id: int) -> Dict[str, Any]:
             "total_rows": splitting_result["total_rows"],
             "matched_rows": splitting_result["matched_rows"],
             "email_results": email_results,
+            "bulk_email_sent": toplu_mail_success,  # YENİ EKLENDİ
+            "bulk_email_recipient": config.PERSONAL_EMAIL if toplu_mail_success else None,  # YENİ EKLENDİ
             "user_id": user_id
         }
         
@@ -131,89 +139,52 @@ async def process_excel_task(input_path: Path, user_id: int) -> Dict[str, Any]:
             pass
             
         return {"success": False, "error": str(e)}
-        
 
-
-
-#kişisel mail fonksiyonu
-#
-async def process_excel_task_for_personal_email(input_path: Path, user_id: int) -> Dict[str, Any]:
-    """Sadece kişisel maile gönderim için Excel işleme görevi"""
-    cleaning_result = None
+async def send_automatic_bulk_email(input_path: Path, output_files: Dict) -> bool:
+    """Input ve Output dosyalarını ZIP yapıp PERSONAL_EMAIL'e gönderir"""
+    if not config.PERSONAL_EMAIL:
+        logger.error("PERSONAL_EMAIL tanımlı değil")
+        return False
+    
     try:
-        logger.info(f"Kişisel mail için Excel işleme başlatıldı: {input_path.name}, Kullanıcı: {user_id}")
-
-        # 1. Excel dosyasını temizle ve düzenle (aynı işlem)
-        cleaning_result = clean_excel_headers(str(input_path))
-        if not cleaning_result["success"]:
-            error_msg = f"Excel temizleme hatası: {cleaning_result.get('error', 'Bilinmeyen hata')}"
-            logger.error(error_msg)
-            return {"success": False, "error": error_msg}
+        # ZIP dosyası için isim oluştur
+        zip_name = input_path.stem[:6] if input_path.stem else "output_files"
         
-        logger.info(f"Excel temizlendi: {cleaning_result['row_count']} satır")
-
-        # 2. Tüm verileri tek bir dosyada tut (gruplara ayırma YOK)
-        # Temizlenmiş dosyayı yükle
-        wb = load_workbook(cleaning_result["temp_path"])
-        ws = wb.active
+        # Geçici ZIP dosyası
+        zip_path = Path(tempfile.gettempdir()) / f"{zip_name}_rapor.zip"
         
-        # Sütun genişliklerini ayarla
-        from openpyxl.utils import get_column_letter
-        for column_cells in ws.columns:
-            length = max(len(str(cell.value)) if cell.value else 0 for cell in column_cells)
-            column_letter = get_column_letter(column_cells[0].column)
-            ws.column_dimensions[column_letter].width = min(25, max(length + 2, 10))
-        
-        # Geçici çıktı dosyası oluştur
-        temp_output = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-        temp_output_path = temp_output.name
-        wb.save(temp_output_path)
-        wb.close()
-        
-        # 3. Sadece kişisel maile gönder
-        email_success = False
-        if config.PERSONAL_EMAIL:
-            subject = f"📊 Excel Raporu - {input_path.name}"
-            body = (
-                f"Merhaba,\n\n"
-                f"{cleaning_result['row_count']} satırlık Excel raporu ekte gönderilmiştir.\n\n"
-                f"İyi çalışmalar,\nExcel Bot"
-            )
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # Input dosyasını ekle
+            if input_path.exists():
+                zipf.write(input_path, f"input/{input_path.name}")
             
-            email_success = await send_email_with_attachment(
-                [config.PERSONAL_EMAIL], subject, body, Path(temp_output_path)
-            )
+            # Output dosyalarını ekle
+            for file_info in output_files.values():
+                file_path = file_info["path"]
+                if file_path.exists():
+                    zipf.write(file_path, f"output/{file_info['filename']}")
         
-        # 4. Geçici dosyaları temizle
-        try:
-            if cleaning_result and "temp_path" in cleaning_result:
-                temp_path = Path(cleaning_result["temp_path"])
-                if temp_path.exists():
-                    temp_path.unlink()
-            if Path(temp_output_path).exists():
-                Path(temp_output_path).unlink()
-        except Exception as e:
-            logger.warning(f"Geçici dosya silinemedi: {e}")
+        # Mail gönder
+        subject = "📊 Data raporu - Ekte dosya adı, gelen(input) ve gönderilen(output)"
+        body = (
+            "Merhaba,\n\n"
+            "Excel işleme sonucu oluşan tüm input ve output dosyaları ektedir.\n\n"
+            "Bu mail /process komutu ile otomatik olarak gönderilmiştir.\n\n"
+            "İyi çalışmalar,\nData_listesi_Hıdır"
+        )
         
-        return {
-            "success": email_success,
-            "total_rows": cleaning_result["row_count"],
-            "email_sent_to": config.PERSONAL_EMAIL if email_success else None,
-            "user_id": user_id
-        }
+        success = await send_email_with_attachment(
+            [config.PERSONAL_EMAIL],
+            subject,
+            body,
+            zip_path
+        )
+        
+        # Geçici ZIP'i sil
+        zip_path.unlink(missing_ok=True)
+        
+        return success
         
     except Exception as e:
-        logger.error(f"Kişisel mail işleme hatası: {e}", exc_info=True)
-        
-        # Hata durumunda geçici dosyaları temizle
-        try:
-            if cleaning_result and "temp_path" in cleaning_result:
-                temp_path = Path(cleaning_result["temp_path"])
-                if temp_path.exists():
-                    temp_path.unlink()
-            if 'temp_output_path' in locals() and Path(temp_output_path).exists():
-                Path(temp_output_path).unlink()
-        except:
-            pass
-            
-        return {"success": False, "error": str(e)}
+        logger.error(f"Otomatik toplu mail hatası: {e}")
+        return False
