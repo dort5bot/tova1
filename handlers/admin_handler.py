@@ -1,5 +1,15 @@
+# handlers/admin_handler.py
+
 """
 Admin Handler (handlers/admin_handler.py)
+📊 İstatistikler - Detaylı sistem istatistikleri
+📝 Logları Görüntüle - Son 50 log satırını gösterir
+👥 Grupları Yönet - Grup listesini gösterir
+🔄 Grup Dosyası Yükle - Yeni grup JSON dosyası yükler
+📧 Toplu Mail Gönder - Tüm adminlere mesaj gönderir
+🧹 Temizlik Yap - Eski dosyaları temizler
+🚀 Sistem Durumu - Sistem kaynak kullanımını gösterir
+
 """
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, BufferedInputFile
@@ -81,6 +91,8 @@ async def handle_admin_callback(callback: CallbackQuery, state: FSMContext):
         await clean_system(callback.message)
     elif action == "admin_system":
         await show_system_status(callback.message)
+    elif action == "admin_group_details":  # ✅ grup detayı
+        await show_group_details(callback)    
     
     await callback.answer()
 
@@ -202,6 +214,8 @@ async def show_group_management(message: Message):
         await message.answer("❌ Grup bilgileri alınamadı.")
 
 # Admin handler'a grupları yenileme fonksiyonu ekleyin:
+
+# grupları yenileme
 @router.callback_query(F.data == "admin_refresh_groups")
 async def refresh_groups(callback: CallbackQuery):
     """Grupları yeniden yükler"""
@@ -225,6 +239,8 @@ async def refresh_groups(callback: CallbackQuery):
     
     await callback.answer()
 
+
+# Grup JSON dosyasını
 @router.message(AdminStates.waiting_for_group_file, F.document)
 async def handle_group_file_upload(message: Message, state: FSMContext):
     """Grup JSON dosyasını işler"""
@@ -281,6 +297,8 @@ async def handle_group_file_upload(message: Message, state: FSMContext):
     finally:
         await state.clear()
 
+
+# Toplu mesaj Sadece config.ADMIN_CHAT_IDS listesinde tanımlı admin ID'lerine gönderilir
 @router.message(AdminStates.waiting_for_broadcast)
 async def handle_broadcast_message(message: Message, state: FSMContext):
     """Toplu mesaj gönderimini işler"""
@@ -312,6 +330,7 @@ async def handle_broadcast_message(message: Message, state: FSMContext):
     finally:
         await state.clear()
 
+# Sistem temizliği yapar
 async def clean_system(message: Message):
     """Sistem temizliği yapar"""
     try:
@@ -374,6 +393,8 @@ async def clean_system(message: Message):
         logger.error(f"Sistem temizliği hatası: {e}")
         await message.answer("❌ Temizlik işlemi başarısız oldu.")
 
+
+# Sistem durumu
 async def show_system_status(message: Message):
     """Sistem durumunu gösterir"""
     try:
@@ -421,6 +442,8 @@ async def show_system_status(message: Message):
         logger.error(f"Sistem durumu hatası: {e}")
         await message.answer("❌ Sistem durumu alınamadı.")
 
+
+# Test e-postası gönderir
 @router.message(Command("send_test_email"))
 async def cmd_send_test_email(message: Message, command: CommandObject):
     """Test e-postası gönderir"""
@@ -449,7 +472,7 @@ async def cmd_send_test_email(message: Message, command: CommandObject):
         # E-posta gönder
         success = await send_email_with_attachment(
             [email],
-            "📧 Test E-postası - Excel Bot",
+            "📧 Test E-postası - Data_listesi_Hıdır",
             "Bu bir test e-postasıdır. Bot e-posta gönderme işlevi çalışıyor.",
             test_file
         )
@@ -466,6 +489,8 @@ async def cmd_send_test_email(message: Message, command: CommandObject):
         logger.error(f"Test e-postası hatası: {e}")
         await message.answer(f"❌ Test e-postası hatası: {str(e)}")
 
+
+# Log dosyası
 @router.message(Command("get_logfile"))
 async def cmd_get_logfile(message: Message):
     """Log dosyasını gönderir"""
@@ -500,6 +525,60 @@ async def cmd_get_logfile(message: Message):
         logger.error(f"Log dosyası gönderme hatası: {e}")
         await message.answer("❌ Log dosyası gönderilemedi.")
 
+
+# Grup detaylarını gösterir
+@router.callback_query(F.data == "admin_group_details")
+async def show_group_details(callback: CallbackQuery):
+    """Grup detaylarını gösterir"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Yetkiniz yok.")
+        return
+    
+    try:
+        groups = group_manager.groups.get("groups", [])
+        
+        if not groups:
+            await callback.message.edit_text("❌ Hiç grup tanımlanmamış.")
+            return
+        
+        # Detaylı grup bilgileri
+        detailed_info = []
+        for i, group in enumerate(groups, 1):
+            group_id = group.get("group_id", "Bilinmiyor")
+            group_name = group.get("group_name", "İsimsiz")
+            cities = group.get("cities", [])
+            emails = group.get("email_recipients", [])
+            
+            detailed_info.append(
+                f"**{i}. {group_name}**\n"
+                f"   ID: {group_id}\n"
+                f"   🏙️ Şehirler: {', '.join(cities) if cities else 'Yok'}\n"
+                f"   📧 E-postalar: {len(emails)} alıcı\n"
+                f"   {', '.join(emails) if emails else 'Yok'}\n"
+            )
+        
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="◀️ Geri", callback_data="admin_groups")]
+            ]
+        )
+        
+        response = "👥 **Grup Detayları**\n\n" + "\n".join(detailed_info)
+        
+        # Mesaj çok uzunsa böl
+        if len(response) > 4000:
+            response = response[:4000] + "\n\n... (devamı çok uzun)"
+        
+        await callback.message.edit_text(response, reply_markup=keyboard, parse_mode="Markdown")
+        
+    except Exception as e:
+        logger.error(f"Grup detayları hatası: {e}")
+        await callback.message.edit_text("❌ Grup detayları alınamadı.")
+    
+    await callback.answer()
+
+
+# geri
 @router.callback_query(F.data == "admin_back")
 async def admin_back(callback: CallbackQuery):
     """Admin paneline geri döner"""

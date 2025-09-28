@@ -32,7 +32,7 @@ class ReplyKeyboardSingleton:
             cls._instance = ReplyKeyboardMarkup(
                 keyboard=[
                     [KeyboardButton(text="oku"), KeyboardButton(text="Temizle"), KeyboardButton(text="Kova"), KeyboardButton(text="TEK")],
-                    [KeyboardButton(text="stop"),KeyboardButton(text="JSON yap"), KeyboardButton(text="Komutlar")],
+                    [KeyboardButton(text="stop"),KeyboardButton(text="JSON yap"), KeyboardButton(text="Komutlar"),KeyboardButton(text="Toplu Mail")],
                 ],
 
                 resize_keyboard=True,
@@ -159,6 +159,14 @@ async def handle_create_json(message: Message, state: FSMContext) -> None:
     await message.answer("📊 JSON oluşturma başlatılıyor...")
     await handle_json_command(message, state)
 
+
+# Toplu Mail
+@router.message(lambda m: m.text and m.text == "Toplu Mail")
+async def handle_toplu_mail(message: Message):
+    """Reply keyboard → Toplu Mail butonu (/toplumaile)"""
+    from handlers.email_handler import cmd_toplu_mail
+    await cmd_toplu_mail(message)
+    
 
 # Komutlar
 @router.message(lambda m: m.text and m.text == "Komutlar")
