@@ -61,9 +61,9 @@ async def show_reply_keyboard(message: Message, title: str) -> None:
 async def send_welcome_message(message: Message):
     await message.answer(
         "📊 Excel İşleme Botuna Hoşgeldiniz!\n\n"
-        "önce Temizleyi tıkla."
-        "Excel dosyasını kontrol et. "
-        "Dosyada 1.satırda 'TARİH' ve 'İL' sütunları bulunmalıdır."
+        "1️⃣ Önce **Temizle** butonuna tıkla.\n"
+        "2️⃣ Excel dosyasını kontrol et.\n"
+        "3️⃣ Dosyada **1. satırda** 'TARİH' ve 'İL' sütunları bulunmalıdır."
     )
     await show_reply_keyboard(message, "📋 Hızlı Erişim Menüsü")
 
