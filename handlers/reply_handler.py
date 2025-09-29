@@ -61,7 +61,8 @@ async def show_reply_keyboard(message: Message, title: str) -> None:
 async def send_welcome_message(message: Message):
     await message.answer(
         "📊 Excel İşleme Botuna Hoşgeldiniz!\n\n"
-        "Temizleyi tıkla, Excel dosyasını kontrol et. "
+        "önce Temizleyi tıkla."
+        "Excel dosyasını kontrol et. "
         "Dosyada 1.satırda 'TARİH' ve 'İL' sütunları bulunmalıdır."
     )
     await show_reply_keyboard(message, "📋 Hızlı Erişim Menüsü")
@@ -130,7 +131,12 @@ async def handle_process(message: Message, state: FSMContext) -> None:
     Reply keyboard → İşle butonu (/process)
     """
     logger.info("İşle komutu çalıştırılıyor: %s", message.from_user.id)
+    #from handlers.file_handler import clear_all #temizlik
     from handlers.upload_handler import cmd_process
+    
+    # Sessizce temizlik (kullanıcıya mesaj gönderme)
+    #await clear_all(message, silent=True)  # silent parametresi ekle, yoksa ayrı fonksiyon yaz
+
 
     await message.answer("⚙️ İşlem başlatılıyor...")
     await cmd_process(message, state)
