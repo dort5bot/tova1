@@ -1,5 +1,6 @@
 # jobs/process_excel.py - GÜNCELLENMİŞ VERSİYON
 """
+ZIP içinde klasör ayrımı olmadan, tüm input ve output Excel dosyalarının aynı klasörde (düz olarak) bir arada
 
 """
 import asyncio
@@ -14,6 +15,9 @@ from utils.mailer import send_email_with_attachment
 from utils.group_manager import group_manager
 from utils.logger import logger
 from config import config
+
+from datetime import datetime, timedelta
+
 
 async def process_excel_task(input_path: Path, user_id: int) -> Dict[str, Any]:
     """Excel işleme görevini yürütür - TOPLU MAIL OTOMATİK EKLENDİ"""
@@ -147,29 +151,36 @@ async def send_automatic_bulk_email(input_path: Path, output_files: Dict) -> boo
         return False
     
     try:
+        # UTC+3 saatini al
+        now_utc3 = datetime.utcnow() + timedelta(hours=3)
+        time_str = now_utc3.strftime("%H%M")  # Saat ve dakika
+        
         # ZIP dosyası için isim oluştur
-        zip_name = input_path.stem[:6] if input_path.stem else "output_files"
+        zip_name = f"{time_str}_{input_path.stem[:9]}" if input_path.stem else f"{time_str}_output_files"
+        
         
         # Geçici ZIP dosyası
-        zip_path = Path(tempfile.gettempdir()) / f"{zip_name}_rapor.zip"
+        zip_path = Path(tempfile.gettempdir()) / f"{zip_name}_rap.zip"
         
+
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            # Input dosyasını ekle
+            # Input dosyasını klasör olmadan ekle
             if input_path.exists():
-                zipf.write(input_path, f"input/{input_path.name}")
+                zipf.write(input_path, input_path.name)
             
-            # Output dosyalarını ekle
+            # Output dosyalarını klasör olmadan ekle
             for file_info in output_files.values():
                 file_path = file_info["path"]
                 if file_path.exists():
-                    zipf.write(file_path, f"output/{file_info['filename']}")
+                    zipf.write(file_path, file_info['filename'])
+
         
         # Mail gönder
-        subject = "📊 Data raporu - Ekte dosya adı, gelen(input) ve gönderilen(output)"
+        subject = "📊 Data raporu - Ektedir. Saat-dosya adı, gelen(input) ve gönderilen(output)"
         body = (
             "Merhaba,\n\n"
-            "Excel işleme sonucu oluşan tüm input ve output dosyaları ektedir.\n\n"
-            "Bu mail /process komutu ile otomatik olarak gönderilmiştir.\n\n"
+            "Excel işleme sonucu oluşan tüm input(gelen) ve output(gönderilen) dosyaları ektedir.\n\n"
+            "Bu mail otomatik olarak gönderilmiştir.\n\n"
             "İyi çalışmalar,\nData_listesi_Hıdır"
         )
         
